@@ -84,6 +84,17 @@ public class Git {
     // with the new hash.
     public static void stageFiles(String[] filePaths, String[] hashes) throws IOException {
 
+        if (filePaths.length != hashes.length) {
+            throw new IllegalArgumentException(
+                    "One or more files doesn't have a corresponding hash");
+        }
+
+        for (int i = 0; i < filePaths.length; i++) {
+            if (!Files.isRegularFile(Path.of(filePaths[i]))) {
+                throw new IOException("No such file: " + filePaths[i]);
+            }
+        }
+
         String[] relativeFilePaths = changeBareFileNamesToRelativePaths(filePaths);
 
         // this represents the files that have already been staged
@@ -150,7 +161,7 @@ public class Git {
             if (!entries.get(i)[0].equals(filePathHashMap.get(entries.get(i)[1]))) {
                 // remove entries.get(i) from entries
                 entries.remove(i);
-
+                i--;
                 // rewrite indexContent with the updated entries list
                 indexContent = updateIndexContent(entries);
             }
@@ -164,11 +175,6 @@ public class Git {
         // indexContent.deleteCharAt(indexContent.length() - 1);
         // }
 
-        if (filePaths.length != hashes.length) {
-            throw new IllegalArgumentException(
-                    "One or more files doesn't have a corresponding hash");
-        }
-
         BufferedWriter bw = new BufferedWriter(new FileWriter("git/index"));
 
         System.out.println(indexContent.toString());
@@ -177,30 +183,17 @@ public class Git {
         bw.write(indexContent.toString());
 
         for (int i = 0; i < filePaths.length; i++) {
-            if (!Files.isRegularFile(Path.of(filePaths[i]))) {
-                bw.close();
-                throw new IOException("No such file: " + filePaths[i]);
-            }
 
             // before staging the file check to make sure that it hasn't already been staged
             // and
             // that it's not already inside of index
             // if indexContent contains filePaths[i] or filePaths[i] has already been staged
             // continue
-            if (!willFileBeStaged(stagedFiles, indexContent.toString(), filePaths[i])) {
+            if (!willFileBeStaged(stagedFiles, indexContent.toString(), relativeFilePaths[i])) {
                 continue;
             } else {
-                // only write to index if neither of the above conditions are true
-                bw.write(hashes[i] + " " + relativeFilePaths[i]);
-
-                // write in a new line if the next file is gonna be staged
-                if (i != filePaths.length - 1) {
-                    if (willFileBeStaged(stagedFiles, indexContent.toString(), filePaths[i + 1])) {
-                        bw.write("\n");
-                    }
-                }
-
-                stagedFiles.add(filePaths[i]);
+                bw.write(hashes[i] + " " + relativeFilePaths[i] + "\n");
+                stagedFiles.add(relativeFilePaths[i]);
             }
 
         }
@@ -214,7 +207,7 @@ public class Git {
     // file before staging and the file path
     public static boolean willFileBeStaged(ArrayList<String> stagedFiles, String indexContent,
             String filePath) {
-        if (indexContent.contains(filePath)) {
+        if (indexContent.contains(" " + filePath + "\n")) {
             return false;
         } else if (stagedFiles.contains(filePath)) {
             return false;
@@ -252,7 +245,8 @@ public class Git {
         return entries;
     }
 
-    // this method is for after an entry is removed from the index file, and after that entry has been removed from the entries list
+    // this method is for after an entry is removed from the index file, and after
+    // that entry has been removed from the entries list
     // it takes in the entries list
     public static StringBuilder updateIndexContent(ArrayList<String[]> entries) {
         StringBuilder indexContent = new StringBuilder();
@@ -297,7 +291,8 @@ public class Git {
         return relativePaths;
     }
 
-    // This method creates a tree object that represents the directory git-project-Yari/dirPath
+    // This method creates a tree object that represents the directory
+    // git-project-Yari/dirPath
     // it takes in the path of the directory and an ArrayList that stores the direct
     // children of dirPath
     // it returns the hash of the tree it created
@@ -305,26 +300,28 @@ public class Git {
 
         try {
 
-            //get the working list with only the files in dirPath
+            // get the working list with only the files in dirPath
             ArrayList<String> updatedList = updateWorkingList(workingList, dirPath);
-            
-            //get the working list without the directory path
+
+            // get the working list without the directory path
             ArrayList<String> newWorkingList = removeDirectoryPath(updatedList);
 
-            //create the StringBuilder for the tree's contents
+            // create the StringBuilder for the tree's contents
             StringBuilder treeContents = new StringBuilder();
 
-            //loop through working list and append each entry to treeContents with a new line after each entry
+            // loop through working list and append each entry to treeContents with a new
+            // line after each entry
             for (int i = 0; i < newWorkingList.size(); i++) {
                 treeContents.append(newWorkingList.get(i));
 
-                //if we're not on the last entry append a new line to treeContents
+                // if we're not on the last entry append a new line to treeContents
                 if (i != newWorkingList.size() - 1) {
                     treeContents.append("\n");
                 }
             }
 
-            //write treeContents into a new file so I can call hashFile() on it cuz I don't feel like writing a new method to hash just a String
+            // write treeContents into a new file so I can call hashFile() on it cuz I don't
+            // feel like writing a new method to hash just a String
             File treeContentsFile = new File("treeContents");
             FileWriter treeContentsWriter = new FileWriter(treeContentsFile);
             treeContentsWriter.write(treeContents.toString());
@@ -332,11 +329,11 @@ public class Git {
 
             treeContentsFile.createNewFile();
 
-            //get the SHA-1 hash of treeContents
+            // get the SHA-1 hash of treeContents
             String treeHash = hashFile("treeContents");
 
-            //call createBlobs(treeContentsFile) to create a new file in the objects folder
-            createBlobs("treeContents"); 
+            // call createBlobs(treeContentsFile) to create a new file in the objects folder
+            createBlobs("treeContents");
 
             treeContentsFile.delete();
 
@@ -349,42 +346,49 @@ public class Git {
     }
 
     // this helper creates and returns the working list for the directory dirPath
-    //it iterates through working list and removes any files that are not in dirPath
+    // it iterates through working list and removes any files that are not in
+    // dirPath
     public static ArrayList<String> updateWorkingList(ArrayList<String> workingList, String dirPath) {
 
-            ArrayList<String> updatedList = new ArrayList<String>();
+        ArrayList<String> updatedList = new ArrayList<String>();
 
-            //loop through workingList
-            for (int i = 0; i < workingList.size(); i++) {
-                if (workingList.get(i).contains(dirPath)) {
+        // loop through workingList
+        for (int i = 0; i < workingList.size(); i++) {
+            String path = workingList.get(i).split(" ")[2];
+            if (path.startsWith(dirPath + "/")) {
+                String rest = path.substring(dirPath.length() + 1);
+                if (!rest.contains("/")) {
                     updatedList.add(workingList.get(i));
                 }
             }
+        }
 
-            return updatedList;
+        return updatedList;
 
     }
 
-    //this helper takes the working list and removes the directory path from each entry
+    // this helper takes the working list and removes the directory path from each
+    // entry
     public static ArrayList<String> removeDirectoryPath(ArrayList<String> workingList) {
 
         ArrayList<String> noDirPathWorkingList = new ArrayList<String>();
 
-        //loop through the working list
+        // loop through the working list
         for (int i = 0; i < workingList.size(); i++) {
 
-            //split each entry into {"BLOB", "hash", "path"}
+            // split each entry into {"BLOB", "hash", "path"}
             String[] splitEntry = workingList.get(i).split(" ");
 
-            //the file name is just the substring of splitEntry[2] from the last index of "/" to the end
+            // the file name is just the substring of splitEntry[2] from the last index of
+            // "/" to the end
             String fileName = splitEntry[2].substring(splitEntry[2].lastIndexOf("/") + 1);
 
-            //create the StringBuilder for the updated entry without the directory path
+            // create the StringBuilder for the updated entry without the directory path
             StringBuilder updatedEntry = new StringBuilder();
 
             updatedEntry.append(splitEntry[0] + " " + splitEntry[1] + " " + fileName);
 
-            //add updatedEntry to noDirPathWorkingList
+            // add updatedEntry to noDirPathWorkingList
             noDirPathWorkingList.add(updatedEntry.toString());
         }
 
@@ -597,7 +601,7 @@ public class Git {
         System.out.println();
 
         System.out.println("== Testing createTree() ==");
-        
+
         ArrayList<String> workingList = new ArrayList<>();
 
         workingList.add("blob abc123 project/docs/Hello.txt");
